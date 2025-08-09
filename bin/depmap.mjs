@@ -5,6 +5,7 @@ import fs from "node:fs";
 import minimist from "minimist";
 import open from "open";
 import chokidar from "chokidar";
+import { execFileSync } from "node:child_process";
 import { generateGraph } from "../src/generate-graph.mjs";
 import { serve } from "../src/server.mjs";
 import { loadConfig } from "../src/load-config.mjs";
@@ -23,12 +24,32 @@ async function build({ projectRoot, config }) {
 
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 
+function writeBaseGraph({ projectRoot, baseRev, baseFile }) {
+  const outDir = path.join(projectRoot, ".depmap");
+  const outFile = path.join(outDir, "base-graph.json");
+  fs.mkdirSync(outDir, { recursive: true });
+  let baseJson = null;
+  if (baseFile && fs.existsSync(baseFile)) {
+    baseJson = fs.readFileSync(baseFile, "utf8");
+  } else if (baseRev) {
+    try {
+      baseJson = execFileSync("git", ["show", `${baseRev}:public/graph.json`], { cwd: projectRoot, encoding: "utf8", maxBuffer: 8 * 1024 * 1024 });
+    } catch {
+      console.warn(`[depmap] could not read graph from ${baseRev}. Did you run depmap on that branch?`);
+    }
+  }
+  if (baseJson) {
+    fs.writeFileSync(outFile, baseJson);
+    console.log(`[depmap] wrote .depmap/base-graph.json from ${baseFile ? baseFile : baseRev}`);
+  }
+}
+
 async function main() {
   const argv = minimist(process.argv.slice(2), {
-    string: ["root", "port"],
+    string: ["root", "port", "baseRev", "baseFile"],
     boolean: ["open", "graphOnly", "write", "force", "watch"],
     alias: { r: "root", p: "port", o: "open" },
-    default: { root: process.cwd(), port: "5656", open: true, graphOnly: false, write: false, force: false, watch: false }
+    default: { root: process.cwd(), port: "5656", open: true, graphOnly: false, write: false, force: false, watch: false, baseRev: "" }
   });
 
   const cmd = argv._[0]; // optional subcommand: infer
@@ -55,6 +76,9 @@ async function main() {
 
   console.log(`[depmap] scanning ${projectRoot}`);
   await build({ projectRoot, config });
+  if (argv.baseRev || argv.baseFile) {
+    writeBaseGraph({ projectRoot, baseRev: argv.baseRev, baseFile: argv.baseFile });
+  }
 
   if (argv.graphOnly && !argv.watch) return;
 
@@ -75,6 +99,7 @@ async function main() {
       try {
         await build({ projectRoot, config });
         srv.broadcast("graph", { at: Date.now() });
+        if (argv.baseRev || argv.baseFile) srv.broadcast("diff", { at: Date.now() });
       } catch (e) {
         console.error("[depmap] rebuild failed:", e?.message || e);
       }

@@ -15,5 +15,3 @@
   "include": ["viewer/**/*", "src/**/*", "sample-app/**/*"],
   "exclude": ["node_modules", "viewer/dist"]
 }
-
-

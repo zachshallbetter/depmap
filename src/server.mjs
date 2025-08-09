@@ -2,6 +2,7 @@ import path from "node:path";
 import fs from "node:fs";
 import http from "node:http";
 import sirv from "sirv";
+import { diffGraphs } from "./diff-graph.mjs";
 
 export async function serve({ projectRoot, viewerRoot, port }) {
   const serveViewer = sirv(viewerRoot, { dev: true, etag: true, brotli: true });
@@ -32,6 +33,21 @@ export async function serve({ projectRoot, viewerRoot, port }) {
       res.setHeader("Content-Type", "application/json");
       fs.createReadStream(p).pipe(res);
       return;
+    }
+    if (req.url === "/graph-base") {
+      const p = path.join(projectRoot, ".depmap", "base-graph.json");
+      res.setHeader("Content-Type", "application/json");
+      if (!fs.existsSync(p)) { res.end(JSON.stringify({ nodes:[], edges:[] })); return; }
+      fs.createReadStream(p).pipe(res); return;
+    }
+    if (req.url === "/diff") {
+      const curP = path.join(projectRoot, "public", "graph.json");
+      const baseP = path.join(projectRoot, ".depmap", "base-graph.json");
+      res.setHeader("Content-Type", "application/json");
+      if (!fs.existsSync(curP)) { res.writeHead(404); res.end(JSON.stringify({ error:"missing current graph" })); return; }
+      const cur = JSON.parse(fs.readFileSync(curP, "utf8"));
+      const base = fs.existsSync(baseP) ? JSON.parse(fs.readFileSync(baseP, "utf8")) : { nodes:[], edges:[] };
+      res.end(JSON.stringify(diffGraphs(base, cur))); return;
     }
     if (req.url === "/events") return sseHandler(req, res);
     serveViewer(req, res);
