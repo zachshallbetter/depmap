@@ -1,16 +1,17 @@
 # DepMap
 
-Dependency map + interactive viewer for JavaScript/TypeScript projects (Next.js/React friendly).
-Zero build step, Radix UI + ShadCN look and feel, URL-state, Inspector, and a Web Worker force layout.
- • Scans your repo and writes public/graph.json
- • Serves a viewer and opens your browser
- • Policy checks (define what kinds can import what)
- • Fast, responsive layout in a Worker
- • Shareable state via URL query string
+Dependency map + interactive viewer for JavaScript/TypeScript projects (Next.js/React friendly). Zero build step, Radix UI + ShadCN look and feel, URL-state, Inspector, and a Web Worker force layout.
+
+- Scans your repo and writes public/graph.json
+- Serves a viewer and opens your browser
+- Policy checks (define what kinds can import what)
+- Fast, responsive layout in a Worker
+- Shareable state via URL query string
 
 ⸻
 
 ## Contents
+
  • Quickstart
  • CLI
  • Configuration
@@ -26,9 +27,7 @@ Zero build step, Radix UI + ShadCN look and feel, URL-state, Inspector, and a We
 
 ⸻
 
-Here’s a crisp product-intent you can hand to anyone working on (or with) the tool.
-
-Intent (one-liner)
+## Intent
 
 Make codebases legible. depmap reveals how a project is wired, enforces lightweight architecture rules, and helps developers reason about change—fast enough to use during day-to-day work.
 
@@ -144,6 +143,11 @@ export default {
 
 npx depmap               # generates public/graph.json, serves the viewer, opens browser
 npx depmap --watch       # watch mode: rebuilds graph on change and live-reloads viewer
+
+Local development
+
+npm run dev              # parallel: viewer watch (esbuild) + serve sample app with depmap --watch
+npm run dev:viewer       # viewer-only watch to rebuild viewer/dist/viewer.js on changes
 
 The viewer is available at <http://localhost:5656/> by default.
 

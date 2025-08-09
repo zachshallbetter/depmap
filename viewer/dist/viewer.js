@@ -52,14 +52,13 @@ function TreeView({ data, selectedId, onPick, onFilterDir }) {
   const [open, setOpen] = useState({ app: true, components: true, lib: true });
   const [q, setQ] = useState("");
   const tree = useMemo(() => {
-    var _a;
     const root = { name: "", path: "", files: [], dirs: {} };
     for (const n of data.nodes) {
       const parts = n.path.split("/");
       let cur = root;
       for (let i = 0; i < parts.length - 1; i++) {
         const seg = parts[i];
-        (_a = cur.dirs)[seg] || (_a[seg] = { name: seg, path: (cur.path ? cur.path + "/" : "") + seg, files: [], dirs: {} });
+        cur.dirs[seg] ||= { name: seg, path: (cur.path ? cur.path + "/" : "") + seg, files: [], dirs: {} };
         cur = cur.dirs[seg];
       }
       cur.files.push(n);
@@ -174,11 +173,10 @@ function DepGraph({ data, state, setState }) {
   const edges = useMemo(() => data.edges.map((e) => ({ ...e })), [data.edges]);
   const byId = useMemo(() => Object.fromEntries(nodes.map((n) => [n.id, n])), [nodes]);
   const adj = useMemo(() => {
-    var _a, _b;
     const o = {};
     for (const e of edges) {
-      (o[_a = e.source] || (o[_a] = /* @__PURE__ */ new Set())).add(e.target);
-      (o[_b = e.target] || (o[_b] = /* @__PURE__ */ new Set())).add(e.source);
+      (o[e.source] ||= /* @__PURE__ */ new Set()).add(e.target);
+      (o[e.target] ||= /* @__PURE__ */ new Set()).add(e.source);
     }
     return o;
   }, [edges]);

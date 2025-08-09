@@ -9,6 +9,9 @@
   },
   "scripts": {
     "build:viewer": "node scripts/build-viewer.mjs",
+    "dev:viewer": "node scripts/watch-viewer.mjs",
+    "dev": "npm-run-all --parallel dev:viewer serve:sample",
+    "serve:sample": "node bin/depmap.mjs --root ./sample-app --port 5656 --watch --open=false",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "depmap:graph": "depmap --graphOnly"
   },
@@ -25,6 +28,7 @@
   "devDependencies": {
     "@types/react": "^19.1.9",
     "@types/react-dom": "^19.1.7",
+    "npm-run-all": "^4.1.5",
     "typescript": "^5.9.2"
   }
 }
