@@ -27,12 +27,16 @@ Contents
 ⸻
 
 Quickstart
-	1.	Install and create a config at your project root:
+1.	Install and create a config at your project root:
 
 npm i -D depmap
-# or: npx depmap  (will prompt if config is missing)
 
-Create depmap.config.ts:
+Generate a config (recommended):
+
+npx depmap infer
+# Use --write to write depmap.config.ts, --force to overwrite if it exists
+
+Alternatively, create depmap.config.ts manually:
 
 // depmap.config.ts
 export default {
@@ -91,6 +95,7 @@ export default {
 	2.	Run it:
 
 npx depmap               # generates public/graph.json, serves the viewer, opens browser
+npx depmap --watch       # watch mode: rebuilds graph on change and live-reloads viewer
 
 The viewer is available at http://localhost:5656/ by default.
 
@@ -105,7 +110,22 @@ Option	Type	Default	Description
 --port, -p	number	5656	Viewer port
 --open, -o	boolean	true	Open browser after server starts
 --graphOnly	boolean	false	Only generate public/graph.json, do not start viewer
+--watch	boolean	false	Rebuild graph on changes and live-reload the viewer (SSE)
 
+
+Subcommands
+
+depmap infer [options]
+
+Option	Type	Default	Description
+--write	boolean	false	Write depmap.config.ts instead of depmap.config.suggested.ts
+--force	boolean	false	When used with --write, overwrite existing depmap.config.ts
+
+Examples
+
+npx depmap infer                          # writes depmap.config.suggested.ts
+npx depmap infer --write                  # writes depmap.config.ts (fails if exists)
+npx depmap infer --write --force          # overwrites existing depmap.config.ts
 
 ⸻
 
@@ -152,7 +172,7 @@ You can ignore policy for dev/test code via ignorePolicyForTags.
 
 Viewer
 
-The viewer is a static ESM app (React + D3), styled with a ShadCN-like theme and Radix primitives. The force simulation runs in a Web Worker so the UI remains responsive.
+The viewer is a static ESM app (React + D3), styled with a ShadCN-like theme and Radix primitives. The force simulation runs in a Web Worker so the UI remains responsive. In watch mode, it connects to an SSE endpoint (/events) and refetches /graph automatically on changes.
 
 URL-state
 
@@ -174,6 +194,7 @@ Controls
 	•	Hops: when focused on a node, shows neighbors within N hops.
 	•	Clear focus: exit focus mode.
 	•	Reset: resets focus and all filters.
+	•	coverage<60%: filter to nodes with low coverage (when coverage plugin is enabled).
 	•	Tree: click a directory to filter by it; click a file to focus that node.
 
 Inspector
@@ -207,6 +228,7 @@ type Node = {
   kind: string;      // from tagRules
   tags?: string[];   // from tagRules
   circular?: boolean;
+  meta?: Record<string, any>; // plugin annotations (e.g., coverage)
 };
 
 type Edge = {
@@ -240,11 +262,38 @@ Add a script to regenerate the graph and keep it as a build artifact:
 
 In a pull request workflow, run depmap --graphOnly, upload public/graph.json, and optionally post counts from summary.flags to the PR as a check.
 
+PR checker script
+
+Use scripts/depmap-check.mjs to fail the build on new policy/server-in-client violations compared to origin/main:
+
+node scripts/depmap-check.mjs
+
+It compares current public/graph.json to origin/main:public/graph.json and exits non-zero if regressions are detected.
+
+Plugins
+
+depmap supports plugins that can annotate or mutate the graph. A coverage plugin is included.
+
+Usage (coverage):
+
+// depmap.config.ts
+import { pluginCoverage } from "depmap/plugins/coverage.mjs";
+
+export default {
+  roots: ["app","components","lib","prisma","stories","scripts"],
+  tagRules: [ /* your rules */ ],
+  policy:   { allow: { /* … */ } },
+  ignorePolicyForTags: ["stories","fixtures","dev-only"],
+  soften: { whenSourceHasTag: { barrel: ["policy"] } },
+  exclude: ["^public/.*","^node_modules/.*","^storybook-static/.*"],
+  plugins: [ pluginCoverage({ lcov: "coverage/lcov.info" }) ]
+} as const;
+
 ⸻
 
 Troubleshooting
 	•	“Missing depmap.config.ts”
-Create it at the repo root. The CLI prints a sample.
+Run depmap infer to generate a suggested config, or create one manually from the template above.
 	•	Nothing shows in the viewer
 Check public/graph.json exists and contains nodes. Ensure roots includes your code folders.
 	•	Edges to external packages are missing

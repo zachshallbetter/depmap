@@ -4,6 +4,7 @@ import path from "node:path";
 import fs from "node:fs";
 import minimist from "minimist";
 import open from "open";
+import chokidar from "chokidar";
 import { generateGraph } from "../src/generate-graph.mjs";
 import { serve } from "../src/server.mjs";
 import { loadConfig } from "../src/load-config.mjs";
@@ -11,12 +12,23 @@ import { inferRules } from "../src/infer-rules.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+async function build({ projectRoot, config }) {
+  const graph = await generateGraph({ root: projectRoot, config });
+  const outPath = path.join(projectRoot, "public", "graph.json");
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  fs.writeFileSync(outPath, JSON.stringify(graph, null, 2));
+  console.log(`[depmap] wrote ${path.relative(projectRoot, outPath)} (${graph.nodes.length} nodes, ${graph.edges.length} edges)`);
+  return graph;
+}
+
+function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
 async function main() {
   const argv = minimist(process.argv.slice(2), {
     string: ["root", "port"],
-    boolean: ["open", "graphOnly", "write", "force"],
+    boolean: ["open", "graphOnly", "write", "force", "watch"],
     alias: { r: "root", p: "port", o: "open" },
-    default: { root: process.cwd(), port: "5656", open: true, graphOnly: false, write: false, force: false }
+    default: { root: process.cwd(), port: "5656", open: true, graphOnly: false, write: false, force: false, watch: false }
   });
 
   const cmd = argv._[0]; // optional subcommand: infer
@@ -42,20 +54,34 @@ async function main() {
   console.log(`[depmap] using config: ${path.relative(projectRoot, cfgPath)}`);
 
   console.log(`[depmap] scanning ${projectRoot}`);
-  const graph = await generateGraph({ root: projectRoot, config });
+  await build({ projectRoot, config });
 
-  const outPath = path.join(projectRoot, "public", "graph.json");
-  fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, JSON.stringify(graph, null, 2));
-  console.log(`[depmap] wrote ${path.relative(projectRoot, outPath)} (${graph.nodes.length} nodes, ${graph.edges.length} edges)`);
-
-  if (argv.graphOnly) return;
+  if (argv.graphOnly && !argv.watch) return;
 
   const viewerRoot = path.join(__dirname, "../viewer");
-  const { url } = await serve({ projectRoot, viewerRoot, port: Number(argv.port) });
+  const srv = await serve({ projectRoot, viewerRoot, port: Number(argv.port) });
 
-  console.log(`[depmap] viewer on ${url}`);
-  if (argv.open) await open(url);
+  console.log(`[depmap] viewer on ${srv.url}`);
+  if (argv.open) await open(srv.url);
+
+  if (argv.watch) {
+    const roots = config.roots?.length ? config.roots : ["."];
+    const globs = roots.map(r => `${r}/**/*.{ts,tsx,js,jsx}`);
+    const watcher = chokidar.watch(globs, {
+      cwd: projectRoot,
+      ignored: ["**/node_modules/**", "**/.next/**", "**/dist/**", "**/build/**", "**/public/graph.json"],
+    });
+    const rebuild = debounce(async () => {
+      try {
+        await build({ projectRoot, config });
+        srv.broadcast("graph", { at: Date.now() });
+      } catch (e) {
+        console.error("[depmap] rebuild failed:", e?.message || e);
+      }
+    }, 250);
+    watcher.on("add", rebuild).on("change", rebuild).on("unlink", rebuild);
+    console.log("[depmap] watch mode enabled");
+  }
 }
 
 async function runInfer({ projectRoot, write, force }) {
@@ -67,7 +93,7 @@ async function runInfer({ projectRoot, write, force }) {
   const banner =
     `// Files: ${stats.files}, Nodes: ${stats.nodes}, Edges: ${stats.edges}\n` +
     `// Roots: ${roots.join(", ")}\n` +
-    `// Detected: ${Object.entries(features).filter(([,v])=>v).map(([k])=>k).join(", ") || "none"}\n\n`;
+    `// Detected: ${Object.entries(features).filter(([, v]) => v).map(([k]) => k).join(", ") || "none"}\n\n`;
 
   if (write) {
     if (fs.existsSync(targetConfig) && !force) {

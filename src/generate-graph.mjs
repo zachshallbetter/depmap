@@ -2,6 +2,7 @@ import path from "node:path";
 import fs from "node:fs";
 import fg from "fast-glob";
 import { Project, ts, SyntaxKind } from "ts-morph";
+import { runPlugins } from "./plugin-api.mjs";
 
 function matchRule(p, rules = []) {
   for (const r of rules) if (r.test.test(p)) return r;
@@ -10,9 +11,9 @@ function matchRule(p, rules = []) {
 const rel = (root, abs) => path.relative(root, abs).replace(/\\/g, "/");
 
 export async function generateGraph({ root, config }) {
-  const roots = config.roots || ["app","components","lib","prisma","stories","scripts"];
+  const roots = config.roots || ["app", "components", "lib", "prisma", "stories", "scripts"];
   const patterns = roots.map(r => `${r}/**/*.{ts,tsx,js,jsx}`);
-  const ignore = ["**/node_modules/**","**/.next/**","**/dist/**"];
+  const ignore = ["**/node_modules/**", "**/.next/**", "**/dist/**"];
   const files = await fg(patterns, { cwd: root, dot: false, ignore });
 
   const project = new Project({
@@ -45,7 +46,7 @@ export async function generateGraph({ root, config }) {
     if (spec.startsWith(".") || spec.startsWith("/")) {
       const fromAbs = path.join(root, fromPath);
       const full = path.resolve(path.dirname(fromAbs), spec);
-      const cands = ["",".ts",".tsx",".js",".jsx","/index.ts","/index.tsx","/index.js","/index.jsx"];
+      const cands = ["", ".ts", ".tsx", ".js", ".jsx", "/index.ts", "/index.tsx", "/index.js", "/index.jsx"];
       for (const c of cands) {
         const abs = full + c;
         if (fs.existsSync(abs)) {
@@ -81,9 +82,9 @@ export async function generateGraph({ root, config }) {
       if (!allow.has(dst?.kind)) e.flags.push("policy");
 
       // client importing server-only
-      const serverKinds = new Set(["server-lib","prisma","api"]);
+      const serverKinds = new Set(["server-lib", "prisma", "api"]);
       const clientSurf = /^(components\/(?!Tools\/)|app\/(?!api\/))/.test(src.path);
-      const serverOnly = serverKinds.has(dst.kind) || (dst.tags||[]).includes("server-only");
+      const serverOnly = serverKinds.has(dst.kind) || (dst.tags || []).includes("server-only");
       if (clientSurf && serverOnly) e.flags.push("server-in-client");
 
       // soften
@@ -131,8 +132,14 @@ export async function generateGraph({ root, config }) {
   // summary
   const summary = {
     counts: { nodes: nodes.length, edges: edges.length },
-    flags: edges.reduce((a, e) => { for (const f of e.flags||[]) a[f]=(a[f]||0)+1; return a; }, {})
+    flags: edges.reduce((a, e) => { for (const f of e.flags || []) a[f] = (a[f] || 0) + 1; return a; }, {})
   };
 
-  return { nodes, edges, summary, policy: config.policy || {} };
+  const graph = { nodes, edges, summary, policy: config.policy || {} };
+
+  if (Array.isArray(config.plugins) && config.plugins.length) {
+    await runPlugins({ root, graph, plugins: config.plugins });
+  }
+
+  return graph;
 }

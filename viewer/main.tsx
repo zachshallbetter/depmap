@@ -5,7 +5,7 @@ import * as Popover from "@radix-ui/react-popover";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import * as ScrollArea from "@radix-ui/react-scroll-area";
 
-type NodeT = { id:string; path:string; kind:string; tags?:string[]; circular?:boolean; x?:number; y?:number };
+type NodeT = { id:string; path:string; kind:string; tags?:string[]; circular?:boolean; x?:number; y?:number; meta?: Record<string, any> };
 type EdgeT = { source:string; target:string; flags?:string[] };
 type Graph = { nodes:NodeT[]; edges:EdgeT[]; summary?:any; policy?:any };
 
@@ -164,7 +164,7 @@ function DepGraph({ data, state, setState }:{
     return {
       stroke: dark ? "#4b5563" : "#c4c4c4",
       text: dark ? "#cbd5e1" : "#1f2937",
-      kindScale: d3.scaleOrdinal<string,string>().domain(KINDS as any).range(d3.schemeTableau10 as any)
+      kindScale: (d3.scaleOrdinal() as any).domain(KINDS as any).range(d3.schemeTableau10 as any)
     };
   }, []);
 
@@ -203,6 +203,12 @@ function DepGraph({ data, state, setState }:{
         (!state.q || n.path.toLowerCase().includes(state.q.toLowerCase())) &&
         (allowedKinds.size ? allowedKinds.has(n.kind) : true)
       ).map(n=>n.id));
+    if (state.lowCoverageOnly) {
+      for (const id of Array.from(ids)) {
+        const n = nodes.find(x => x.id === id);
+        if (!n?.meta || typeof n.meta.coverage !== "number" || n.meta.coverage >= 60) ids.delete(id);
+      }
+    }
     let es = edges.filter(e=>ids.has(e.source)&&ids.has(e.target));
     if (onlyFlagged) {
       es = es.filter(e => (e.flags||[]).some(f => enabledFlags[f]));
@@ -252,7 +258,7 @@ function DepGraph({ data, state, setState }:{
     const nodeSel = g.append("g").selectAll("circle").data(simNodes).enter().append("circle")
       .attr("r", d => state.selectedId===d.id ? 8.5 : 6.5)
       .attr("fill", d => (colors.kindScale as any)(d.kind))
-      .attr("stroke", d => d.circular ? "#ef4444" : state.selectedId===d.id ? "#fff" : "#111827")
+      .attr("stroke", d => d.circular ? "#ef4444" : (d.meta?.coverage != null && d.meta.coverage < 60 ? "#f59e0b" : (state.selectedId===d.id ? "#fff" : "#111827")))
       .attr("stroke-width", d => d.circular ? 2.5 : state.selectedId===d.id ? 2 : 1)
       .style("cursor","pointer")
       .on("click", (_, d:any) => setState({ selectedId: d.id }))
@@ -279,7 +285,7 @@ function DepGraph({ data, state, setState }:{
     (worker as any).addEventListener("message", messageHandler);
 
     // zoom
-    const zoom = d3.zoom<SVGSVGElement, unknown>().scaleExtent([0.25,4]).on("zoom",(ev:any)=>{
+    const zoom = (d3.zoom() as any).scaleExtent([0.25,4]).on("zoom",(ev:any)=>{
       g.attr("transform", ev.transform.toString()); setTransform(ev.transform);
       labels.attr("opacity", ev.transform.k >= 0.8 ? 1 : 0);
     });
@@ -300,6 +306,7 @@ function DepGraph({ data, state, setState }:{
         <input className="input" type="search" placeholder="Search nodes by path…" value={state.q} onChange={e=>setState({ q:(e.target as any).value })} />
         {Object.entries(FLAGS).map(([k,c]) => pill(k, !!state.enabledFlags[k], () => setState({ enabledFlags: { ...state.enabledFlags, [k]: !state.enabledFlags[k] } }), c))}
         {pill("only flagged", !!state.onlyFlagged, () => setState({ onlyFlagged: !state.onlyFlagged }))}
+        {pill("coverage<60%", !!state.lowCoverageOnly, () => setState({ lowCoverageOnly: !state.lowCoverageOnly }))}
         <span style={{marginLeft:"auto"}} className="small">Hops</span>
         <select className="input" value={state.hops} onChange={e=>setState({ hops: Number((e.target as any).value) })}>
           <option value={1}>1</option><option value={2}>2</option><option value={3}>3</option>
@@ -338,11 +345,18 @@ function App(){
     q:"", dirPrefix:"", hops:1,
     onlyFlagged:false,
     enabledFlags:Object.fromEntries(Object.keys(FLAGS).map(k=>[k,true])) as Record<string,boolean>,
-    kindFilter:Object.fromEntries((KINDS as readonly string[]).map(k=>[k,true])) as Record<string,boolean>
+    kindFilter:Object.fromEntries((KINDS as readonly string[]).map(k=>[k,true])) as Record<string,boolean>,
+    lowCoverageOnly:false
   });
   const setState = (patch: any) => setStatePatch(patch);
 
   useEffect(()=>{ fetch("/graph").then(r=>r.json()).then(setData); }, []);
+  useEffect(()=>{
+    const es = new EventSource("/events");
+    const handler = () => fetch("/graph").then(r=>r.json()).then(setData);
+    es.addEventListener("graph", handler);
+    return () => es.close();
+  }, []);
 
   return (
     <div className="layout">

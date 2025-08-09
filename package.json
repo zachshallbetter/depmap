@@ -1,19 +1,30 @@
 {
   "name": "depmap",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Dependency map + interactive viewer with Radix UI, URL state, Inspector, and worker-based layout.",
   "type": "module",
   "license": "MIT",
   "bin": {
     "depmap": "bin/depmap.mjs"
   },
+  "scripts": {
+    "build:viewer": "node scripts/build-viewer.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "depmap:graph": "depmap --graphOnly"
+  },
   "dependencies": {
     "bundle-require": "^4.0.2",
+    "chokidar": "^3.6.0",
     "esbuild": "^0.23.0",
     "fast-glob": "^3.3.2",
     "minimist": "^1.2.8",
     "open": "^10.1.0",
     "sirv": "^2.0.4",
     "ts-morph": "^24.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.9",
+    "@types/react-dom": "^19.1.7",
+    "typescript": "^5.9.2"
   }
 }
