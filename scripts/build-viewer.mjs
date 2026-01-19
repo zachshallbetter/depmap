@@ -24,7 +24,8 @@ await esbuild.build({
         "@radix-ui/react-scroll-area",
         "@radix-ui/react-tooltip",
         "@radix-ui/react-toggle-group",
-        "@radix-ui/react-dialog"
+        "@radix-ui/react-dialog",
+        "@radix-ui/react-select"
     ]
 });
 

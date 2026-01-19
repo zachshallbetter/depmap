@@ -53,6 +53,13 @@ export async function serve({ projectRoot, viewerRoot, port }) {
     serveViewer(req, res);
   });
 
-  await new Promise(r => server.listen(port, r));
+  await new Promise((resolve, reject) => {
+    const onError = (err) => reject(err);
+    server.once("error", onError);
+    server.listen(port, () => {
+      server.off("error", onError);
+      resolve();
+    });
+  });
   return { url: `http://localhost:${port}`, broadcast, close: () => server.close() };
 }

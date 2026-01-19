@@ -83,7 +83,22 @@ async function main() {
   if (argv.graphOnly && !argv.watch) return;
 
   const viewerRoot = path.join(__dirname, "../viewer");
-  const srv = await serve({ projectRoot, viewerRoot, port: Number(argv.port) });
+  let port = Number(argv.port);
+  async function startServer(p) {
+    try {
+      return await serve({ projectRoot, viewerRoot, port: p });
+    } catch (e) {
+      if (e?.code === 'EADDRINUSE') return null;
+      throw e;
+    }
+  }
+  let srv = await startServer(port);
+  if (!srv) {
+    // pick next free port up to +20
+    for (let i=1;i<=20 && !srv;i++) srv = await startServer(port + i);
+    if (!srv) { console.error(`[depmap] failed to bind any port near ${port}`); process.exit(1); }
+    console.warn(`[depmap] port ${port} in use, switched to ${port + (srv ? (Number(srv.url.split(':').pop()) - port) : 0)}`);
+  }
 
   console.log(`[depmap] viewer on ${srv.url}`);
   if (argv.open) await open(srv.url);

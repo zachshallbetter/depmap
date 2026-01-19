@@ -2,13 +2,13 @@
 importScripts("https://esm.sh/d3-force@3?bundle");
 
 self.onmessage = (e) => {
-  const { nodes, edges, width, height, xForKind } = e.data;
+  const { nodes, edges, width, height, columns } = e.data;
   const sim = d3.forceSimulation(nodes)
     .force("link", d3.forceLink(edges).id(d => d.id).distance(55).strength(0.5))
     .force("charge", d3.forceManyBody().strength(-180))
-    .force("x", d3.forceX(d => xForKind(d.kind)).strength(0.6))
-    .force("y", d3.forceY(height/2).strength(0.05))
-    .force("collide", d3.forceCollide(15))
+    .force("x", d3.forceX(d => columns[d.kind] ?? width / 2).strength(0.55))
+    .force("y", d3.forceY(height / 2).strength(0.05))
+    .force("collide", d3.forceCollide(22))
     .alpha(1);
 
   let last = 0;
@@ -16,10 +16,10 @@ self.onmessage = (e) => {
     const now = Date.now();
     if (now - last > 30) { // throttle ~33fps
       last = now;
-      self.postMessage({ type: "tick", nodes, edges });
+      self.postMessage({ type: "tick", nodes, edges, alpha: sim.alpha() });
     }
   });
   sim.on("end", () => {
-    self.postMessage({ type: "end", nodes, edges });
+    self.postMessage({ type: "end", nodes, edges, alpha: sim.alpha() });
   });
 };

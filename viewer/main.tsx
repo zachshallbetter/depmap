@@ -1,9 +1,16 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { createRoot } from "react-dom/client";
+import * as React from "react";
+import * as ReactDOM from "react-dom/client";
 import * as d3 from "d3";
 import * as Popover from "@radix-ui/react-popover";
 import * as Tooltip from "@radix-ui/react-tooltip";
+import * as Toolbar from "@radix-ui/react-toolbar";
+import * as ToggleGroup from "@radix-ui/react-toggle-group";
+import * as Select from "@radix-ui/react-select";
 import * as ScrollArea from "@radix-ui/react-scroll-area";
+import * as Menubar from "@radix-ui/react-menubar";
+import { ChevronDownIcon, CheckIcon } from "@radix-ui/react-icons";
+
+const { useEffect, useMemo, useRef, useState, forwardRef } = React;
 
 type NodeT = { id:string; path:string; kind:string; tags?:string[]; circular?:boolean; x?:number; y?:number; meta?: Record<string, any> };
 type EdgeT = { source:string; target:string; flags?:string[] };
@@ -150,6 +157,137 @@ function Inspector({ node, edges, byId, onReveal, onExpand }:{
   );
 }
 
+function PolicyMatrix({ data, onEdgeFilter }:{
+  data:Graph;
+  onEdgeFilter:(srcKind:string, dstKind:string, active:boolean)=>void;
+}) {
+  const [filterState, setFilterState] = useState<Record<string,boolean>>({});
+
+  const matrix = useMemo(()=>{
+    // create matrix of edge counts between kinds
+    const counts: Record<string, Record<string, number>> = {};
+    const flags: Record<string, Record<string, string[]>> = {};
+    
+    KINDS.forEach(src => {
+      counts[src] = {};
+      flags[src] = {};
+      KINDS.forEach(dst => {
+        counts[src][dst] = 0;
+        flags[src][dst] = [];
+      });
+    });
+
+    data.edges.forEach(edge => {
+      const srcNode = data.nodes.find(n => n.id === edge.source);
+      const dstNode = data.nodes.find(n => n.id === edge.target);
+      if (srcNode && dstNode) {
+        counts[srcNode.kind][dstNode.kind]++;
+        if (edge.flags) {
+          flags[srcNode.kind][dstNode.kind].push(...edge.flags);
+        }
+      }
+    });
+
+    return { counts, flags };
+  }, [data]);
+
+  const maxCount = Math.max(...Object.values(matrix.counts).flatMap(row => Object.values(row)));
+
+  const getIntensity = (count: number) => {
+    if (count === 0) return 0;
+    return 0.1 + (count / maxCount) * 0.9;
+  };
+
+  const toggleFilter = (src: string, dst: string) => {
+    const key = `${src}->${dst}`;
+    const newState = !filterState[key];
+    setFilterState(prev => ({ ...prev, [key]: newState }));
+    onEdgeFilter(src, dst, newState);
+  };
+
+  return (
+    <div className="panel" style={{marginTop:12}}>
+      <div className="hd">Policy Matrix</div>
+      <div className="bd">
+        <div className="small" style={{marginBottom:8}}>
+          Edge counts between kinds. Click cells to filter.
+        </div>
+        <div style={{overflowX: 'auto'}}>
+          <table style={{fontSize:10, borderCollapse:'collapse', width:'100%'}}>
+            <thead>
+              <tr>
+                <th style={{padding:2, textAlign:'left', minWidth:60}}>src\dst</th>
+                {KINDS.map(dst => (
+                  <th key={dst} style={{padding:2, textAlign:'center', minWidth:30, writingMode:'vertical-rl', textOrientation:'mixed'}}>
+                    {dst.slice(0,3)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {KINDS.map(src => (
+                <tr key={src}>
+                  <td style={{padding:2, fontWeight:600, fontSize:9}}>
+                    {src.slice(0,8)}
+                  </td>
+                  {KINDS.map(dst => {
+                    const count = matrix.counts[src][dst];
+                    const cellFlags = matrix.flags[src][dst];
+                    const key = `${src}->${dst}`;
+                    const isActive = filterState[key];
+                    const intensity = getIntensity(count);
+                    
+                    return (
+                      <td 
+                        key={dst}
+                        style={{
+                          padding:1,
+                          textAlign:'center',
+                          backgroundColor: count > 0 ? (isActive ? '#3b82f6' : `rgba(59,130,246,${intensity})`) : 'transparent',
+                          color: (count > 0 && intensity > 0.5) || isActive ? 'white' : 'inherit',
+                          cursor: count > 0 ? 'pointer' : 'default',
+                          border: isActive ? '1px solid #1d4ed8' : '1px solid #e5e7eb',
+                          fontSize: 8
+                        }}
+                        onClick={() => count > 0 && toggleFilter(src, dst)}
+                        title={count > 0 ? `${src} → ${dst}: ${count} edges${cellFlags.length ? '\nFlags: ' + Array.from(new Set(cellFlags)).join(', ') : ''}` : undefined}
+                      >
+                        {count > 0 ? count : ''}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="small" style={{marginTop:8, opacity:0.7}}>
+          Blue intensity = edge count. Click to filter by kind pairs.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Custom SelectItem for Radix Select with indicator
+const SelectItem = forwardRef<
+  HTMLDivElement,
+  React.ComponentPropsWithoutRef<typeof Select.Item>
+>(({ children, className, ...props }, forwardedRef) => (
+  <Select.Item
+    className={className}
+    {...props}
+    ref={forwardedRef}
+    style={{ padding: "6px 12px", cursor: "pointer" }}
+  >
+    <Select.ItemText>{children}</Select.ItemText>
+    <Select.ItemIndicator style={{ marginLeft: 6 }}>
+      <CheckIcon />
+    </Select.ItemIndicator>
+  </Select.Item>
+));
+SelectItem.displayName = "SelectItem";
+
 function DepGraph({ data, state, setState }:{
   data:Graph;
   state:any;
@@ -178,6 +316,11 @@ function DepGraph({ data, state, setState }:{
     for(const e of edges){ (o[e.source] ||= new Set()).add(e.target); (o[e.target] ||= new Set()).add(e.source); }
     return o;
   },[edges]);
+  const degrees = useMemo(()=>{
+    const d:Record<string,number> = {};
+    for (const e of edges) { d[e.source] = (d[e.source]||0)+1; d[e.target] = (d[e.target]||0)+1; }
+    return d;
+  }, [edges]);
 
   // active subset (filters + focus)
   const active = useMemo(()=>{
@@ -190,6 +333,17 @@ function DepGraph({ data, state, setState }:{
       for(let i=0;i<state.hops;i++){ const next=new Set<string>(); for(const id of front) for(const n of Array.from(adj[id]||[])) next.add(n); next.forEach(n=>keep.add(n)); front=next; }
       let es = edges.filter(e=>keep.has(e.source)&&keep.has(e.target));
       if (onlyFlagged) es = es.filter(e => (e.flags||[]).some(f => enabledFlags[f]));
+      
+      // Apply kind pair filters
+      if (state.kindPairFilters && Object.keys(state.kindPairFilters).length > 0) {
+        es = es.filter(e => {
+          const srcNode = byId[e.source];
+          const dstNode = byId[e.target];
+          const key = `${srcNode.kind}->${dstNode.kind}`;
+          return state.kindPairFilters[key];
+        });
+      }
+      
       const ids = new Set(nodes.filter(n=>keep.has(n.id)).map(n=>n.id));
       if (onlyFlagged && es.length===0) ids.add(state.selectedId);
       return { ids, edges: es };
@@ -217,8 +371,19 @@ function DepGraph({ data, state, setState }:{
         for (const id of Array.from(ids)) if (!inc.has(id)) ids.delete(id);
       }
     }
+    
+    // Apply kind pair filters
+    if (state.kindPairFilters && Object.keys(state.kindPairFilters).length > 0) {
+      es = es.filter(e => {
+        const srcNode = byId[e.source];
+        const dstNode = byId[e.target];
+        const key = `${srcNode.kind}->${dstNode.kind}`;
+        return state.kindPairFilters[key];
+      });
+    }
+    
     return { ids, edges: es };
-  }, [nodes, edges, state, adj]);
+  }, [nodes, edges, state, adj, byId]);
 
   // worker layout
   useEffect(()=>{
@@ -230,13 +395,12 @@ function DepGraph({ data, state, setState }:{
     const colWidth = width / Math.max(1, KINDS.length - 2);
     const xForKind = (k:string) => 60 + Math.max(0, KINDS.indexOf(k as Kind)) * (colWidth * 0.9);
 
-    // start worker
-    const worker = new Worker("./layout-worker.js", { type:"module" });
+    // start worker (classic worker so we can use importScripts inside)
+    const worker = new Worker("./layout-worker.js");
     const simNodes = nodes.filter(n=>active.ids.has(n.id));
     const simEdges = active.edges.map(e => ({ ...e }));
-    worker.postMessage({ nodes: simNodes, edges: simEdges, width, height,
-      xForKind: (k:string) => xForKind(k) // note: structured clone will serialize function? Can't. We pass samples instead:
-    });
+    const columns: Record<string, number> = Object.fromEntries((KINDS as readonly string[]).map(k => [k, xForKind(k)]));
+    worker.postMessage({ nodes: simNodes, edges: simEdges, width, height, columns });
 
     // draw
     const svg = d3.select(svgRef.current);
@@ -256,17 +420,21 @@ function DepGraph({ data, state, setState }:{
       .attr("stroke-width",2.2).attr("stroke-opacity", .95);
 
     const nodeSel = g.append("g").selectAll("circle").data(simNodes).enter().append("circle")
-      .attr("r", d => state.selectedId===d.id ? 8.5 : 6.5)
+      .attr("r", d => {
+        if (!state.sizeByDegree) return state.selectedId===d.id ? 9 : 7;
+        const deg = (degrees as any)[d.id] || 0;
+        return Math.min(14, 6 + Math.sqrt(deg)) + (state.selectedId===d.id ? 2 : 0);
+      })
       .attr("fill", d => (colors.kindScale as any)(d.kind))
       .attr("stroke", d => d.circular ? "#ef4444" : (d.meta?.coverage != null && d.meta.coverage < 60 ? "#f59e0b" : (state.selectedId===d.id ? "#fff" : "#111827")))
-      .attr("stroke-width", d => d.circular ? 2.5 : state.selectedId===d.id ? 2 : 1)
+      .attr("stroke-width", d => d.circular ? 2.6 : state.selectedId===d.id ? 2.2 : 1.2)
       .style("cursor","pointer")
       .on("click", (_, d:any) => setState({ selectedId: d.id }))
       .append("title").text(d => d.path);
 
     const labels = g.append("g").selectAll("text").data(simNodes).enter().append("text")
-      .text(d => shortLabel(d.path)).attr("font-size",10).attr("dx",8).attr("dy",3)
-      .attr("fill", colors.text).attr("opacity", transform.k >= 0.8 ? 1 : 0);
+      .text(d => shortLabel(d.path)).attr("font-size",10).attr("dx",10).attr("dy",4)
+      .attr("fill", colors.text).attr("opacity", (state.showLabels && transform.k >= 0.6) ? 1 : 0);
 
     const update = () => {
       (bg as any).attr("x1", (d:any)=>byId[d.source].x).attr("y1", (d:any)=>byId[d.source].y)
@@ -274,7 +442,7 @@ function DepGraph({ data, state, setState }:{
       (hl as any).attr("x1", (d:any)=>byId[d.source].x).attr("y1", (d:any)=>byId[d.source].y)
         .attr("x2", (d:any)=>byId[d.target].x).attr("y2", (d:any)=>byId[d.target].y);
       (nodeSel as any).attr("cx",(d:any)=>d.x).attr("cy",(d:any)=>d.y);
-      (labels as any).attr("x",(d:any)=>d.x).attr("y",(d:any)=>d.y);
+      (labels as any).attr("x",(d:any)=>d.x + 2).attr("y",(d:any)=>d.y + 2);
     };
 
     const messageHandler = (ev:MessageEvent) => {
@@ -287,43 +455,115 @@ function DepGraph({ data, state, setState }:{
     // zoom
     const zoom = (d3.zoom() as any).scaleExtent([0.25,4]).on("zoom",(ev:any)=>{
       g.attr("transform", ev.transform.toString()); setTransform(ev.transform);
-      labels.attr("opacity", ev.transform.k >= 0.8 ? 1 : 0);
+      labels.attr("opacity", (state.showLabels && ev.transform.k >= 0.6) ? 1 : 0);
     });
     (svg as any).call(zoom as any).call((zoom as any).transform as any, transform);
 
     return () => { (worker as any).terminate(); };
-  }, [nodes, edges, active, colors, transform, state.enabledFlags, state.selectedId]);
-
-  // toolbar
-  const pill = (label:string, active:boolean, cb:()=>void, color?:string) =>
-    (<button className="chip" aria-pressed={active} onClick={cb} style={color?{color}:undefined}>{label}</button>);
+  }, [nodes, edges, active, colors, transform, state.enabledFlags, state.selectedId, state.showLabels, state.sizeByDegree, degrees]);
 
   const selected = state.selectedId ? byId[state.selectedId] : null;
 
   return (
     <>
-      <div className="toolbar">
-        <input className="input" type="search" placeholder="Search nodes by path…" value={state.q} onChange={e=>setState({ q:(e.target as any).value })} />
-        {Object.entries(FLAGS).map(([k,c]) => pill(k, !!state.enabledFlags[k], () => setState({ enabledFlags: { ...state.enabledFlags, [k]: !state.enabledFlags[k] } }), c))}
-        {pill("only flagged", !!state.onlyFlagged, () => setState({ onlyFlagged: !state.onlyFlagged }))}
-        {pill("coverage<60%", !!state.lowCoverageOnly, () => setState({ lowCoverageOnly: !state.lowCoverageOnly }))}
-        <span style={{marginLeft:"auto"}} className="small">Hops</span>
-        <select className="input" value={state.hops} onChange={e=>setState({ hops: Number((e.target as any).value) })}>
-          <option value={1}>1</option><option value={2}>2</option><option value={3}>3</option>
-        </select>
-        <button className="btn" onClick={()=>setState({ selectedId:null })}>Clear focus</button>
-        <button className="btn" onClick={()=>setState({
-          selectedId:null,q:"",dirPrefix:"",hops:1,onlyFlagged:false,
-          enabledFlags:Object.fromEntries(Object.keys(FLAGS).map(k=>[k,true])),
-          kindFilter:Object.fromEntries((KINDS as readonly string[]).map(k=>[k,true]))
-        })}>Reset</button>
-      </div>
+      <Toolbar.Root className="toolbar" style={{marginBottom: 8}}>
+        <div style={{display: "flex", alignItems: "center", gap: 8}}>
+          <input 
+            className="input" 
+            type="search" 
+            placeholder="Search nodes by path…" 
+            value={state.q} 
+            onChange={e=>setState({ q:(e.target as any).value })} 
+          />
+          
+          <ToggleGroup.Root 
+            type="multiple" 
+            value={Object.entries(state.enabledFlags).filter(([,v])=>v).map(([k])=>k)}
+            onValueChange={(values) => setState({ 
+              enabledFlags: Object.fromEntries(Object.keys(FLAGS).map(k => [k, values.includes(k)]))
+            })}
+          >
+            {Object.entries(FLAGS).map(([k, color]) => (
+              <ToggleGroup.Item 
+                key={k} 
+                value={k} 
+                className="chip"
+                style={{color}}
+              >
+                {k}
+              </ToggleGroup.Item>
+            ))}
+          </ToggleGroup.Root>
+          
+          <Toolbar.Separator style={{width: 1, height: 20, backgroundColor: '#e5e7eb', margin: '0 4px'}} />
+          
+          <ToggleGroup.Root 
+            type="multiple"
+            value={[
+              ...(state.showLabels ? ['labels'] : []),
+              ...(state.sizeByDegree ? ['degree'] : []),
+              ...(state.onlyFlagged ? ['flagged'] : []),
+              ...(state.lowCoverageOnly ? ['coverage'] : [])
+            ]}
+            onValueChange={(values) => setState({
+              showLabels: values.includes('labels'),
+              sizeByDegree: values.includes('degree'),
+              onlyFlagged: values.includes('flagged'),
+              lowCoverageOnly: values.includes('coverage')
+            })}
+          >
+            <ToggleGroup.Item value="labels" className="chip">
+              Labels
+            </ToggleGroup.Item>
+            <ToggleGroup.Item value="degree" className="chip">
+              Size by Degree
+            </ToggleGroup.Item>
+            <ToggleGroup.Item value="flagged" className="chip">
+              Only Flagged
+            </ToggleGroup.Item>
+            <ToggleGroup.Item value="coverage" className="chip">
+              Coverage &lt; 60%
+            </ToggleGroup.Item>
+          </ToggleGroup.Root>
+        </div>
 
-      <div className="toolbar" style={{borderBottom:"none"}}>
-        {pill("All", Object.values(state.kindFilter).every(Boolean), () => setState({ kindFilter: Object.fromEntries((KINDS as readonly string[]).map(k=>[k,true])) }))}
-        {pill("None", Object.values(state.kindFilter).every(v=>!v), () => setState({ kindFilter: Object.fromEntries((KINDS as readonly string[]).map(k=>[k,false])) }))}
-        {(KINDS as readonly string[]).map(k => pill(k, !!state.kindFilter[k], () => setState({ kindFilter: { ...state.kindFilter, [k]: !state.kindFilter[k] } })))}
-      </div>
+        <div style={{display: "flex", alignItems: "center", gap: 8, marginLeft: "auto"}}>
+          <span className="small">Hops</span>
+          <Select.Root value={String(state.hops)} onValueChange={(v)=>setState({ hops: Number(v) })}>
+            <Select.Trigger aria-label="Hops" className="input" style={{display:"inline-flex",alignItems:"center",gap:6,width:80}}>
+              <Select.Value />
+              <Select.Icon>
+                <ChevronDownIcon />
+              </Select.Icon>
+            </Select.Trigger>
+            <Select.Portal>
+              <Select.Content className="panel" position="popper" side="bottom" align="center" sideOffset={4}>
+                <Select.Viewport className="bd" style={{padding:"4px 0"}}>
+                  {[1,2,3].map(v => (
+                    <SelectItem key={v} value={String(v)} className="tree">
+                      {v}
+                    </SelectItem>
+                  ))}
+                </Select.Viewport>
+              </Select.Content>
+            </Select.Portal>
+          </Select.Root>
+          
+          <button className="btn" onClick={()=>setState({ selectedId:null })}>
+            Clear focus
+          </button>
+          
+          <button className="btn" onClick={()=>setState({
+            selectedId:null,q:"",dirPrefix:"",hops:1,onlyFlagged:false,
+            enabledFlags:Object.fromEntries(Object.keys(FLAGS).map(k=>[k,true])),
+            kindFilter:Object.fromEntries((KINDS as readonly string[]).map(k=>[k,true])),
+            kindPairFilters:{},
+            showLabels:false, sizeByDegree:false
+          })}>
+            Reset
+          </button>
+        </div>
+      </Toolbar.Root>
 
       <svg ref={svgRef as any} width="100%" height="720" />
 
@@ -346,7 +586,10 @@ function App(){
     onlyFlagged:false,
     enabledFlags:Object.fromEntries(Object.keys(FLAGS).map(k=>[k,true])) as Record<string,boolean>,
     kindFilter:Object.fromEntries((KINDS as readonly string[]).map(k=>[k,true])) as Record<string,boolean>,
-    lowCoverageOnly:false
+    kindPairFilters:{} as Record<string,boolean>,
+    lowCoverageOnly:false,
+    showLabels:false,
+    sizeByDegree:false
   });
   const setState = (patch: any) => setStatePatch(patch);
 
@@ -357,6 +600,15 @@ function App(){
     es.addEventListener("graph", handler);
     return () => es.close();
   }, []);
+
+  const handleEdgeFilter = (srcKind: string, dstKind: string, active: boolean) => {
+    const key = `${srcKind}->${dstKind}`;
+    setState({ 
+      kindPairFilters: active 
+        ? { ...state.kindPairFilters, [key]: true }
+        : Object.fromEntries(Object.entries(state.kindPairFilters).filter(([k]) => k !== key))
+    });
+  };
 
   return (
     <div className="layout">
@@ -370,13 +622,13 @@ function App(){
           onPick={(id)=>setState({ selectedId:id })}
           onFilterDir={(dir)=>setState({ dirPrefix: dir })}
         />
-        <div className="panel" style={{marginTop:12}}>
-          <div className="hd">Policy Matrix</div>
-          <div className="bd small">Click a src→dst to filter edges (future toggle).</div>
-        </div>
+        <PolicyMatrix 
+          data={data} 
+          onEdgeFilter={handleEdgeFilter}
+        />
       </aside>
     </div>
   );
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+ReactDOM.createRoot(document.getElementById("root")!).render(<App />);

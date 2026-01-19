@@ -6,12 +6,20 @@
     "jsx": "react-jsx",
     "strict": false,
     "noImplicitAny": false,
+    "noEmit": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "allowJs": true,
+    "allowJs": false,
     "types": [],
     "lib": ["ES2022", "DOM"]
   },
-  "include": ["viewer/**/*", "src/**/*", "sample-app/**/*"],
-  "exclude": ["node_modules", "viewer/dist"]
+  "include": [
+    "viewer/**/*.ts",
+    "viewer/**/*.tsx",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "sample-app/**/*.ts",
+    "sample-app/**/*.tsx"
+  ],
+  "exclude": ["node_modules", "viewer/dist", "viewer/layout-worker.js"]
 }
