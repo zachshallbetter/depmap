@@ -1,0 +1,92 @@
+{
+  "nodes": [
+    {
+      "id": "app/page.tsx",
+      "path": "app/page.tsx",
+      "kind": "other",
+      "tags": [],
+      "circular": false
+    },
+    {
+      "id": "components/UI/Button.tsx",
+      "path": "components/UI/Button.tsx",
+      "kind": "ui",
+      "tags": [],
+      "circular": false
+    },
+    {
+      "id": "lib/design-tokens.ts",
+      "path": "lib/design-tokens.ts",
+      "kind": "tokens",
+      "tags": [],
+      "circular": false
+    },
+    {
+      "id": "lib/types.ts",
+      "path": "lib/types.ts",
+      "kind": "types",
+      "tags": [],
+      "circular": false
+    }
+  ],
+  "edges": [
+    {
+      "source": "app/page.tsx",
+      "target": "components/UI/Button.tsx",
+      "flags": [
+        "policy"
+      ]
+    },
+    {
+      "source": "app/page.tsx",
+      "target": "lib/design-tokens.ts",
+      "flags": [
+        "policy"
+      ]
+    }
+  ],
+  "summary": {
+    "counts": {
+      "nodes": 4,
+      "edges": 2
+    },
+    "flags": {
+      "policy": 2
+    }
+  },
+  "policy": {
+    "allow": {
+      "page": [
+        "component",
+        "ui",
+        "types",
+        "tokens"
+      ],
+      "component": [
+        "component",
+        "ui",
+        "types",
+        "tokens"
+      ],
+      "ui": [
+        "ui",
+        "types",
+        "tokens"
+      ],
+      "types": [
+        "types",
+        "tokens"
+      ],
+      "tokens": [
+        "tokens"
+      ],
+      "server-lib": [
+        "server-lib",
+        "types"
+      ],
+      "other": [
+        "other"
+      ]
+    }
+  }
+}

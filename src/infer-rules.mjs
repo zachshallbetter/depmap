@@ -1,14 +1,3 @@
-Here’s a drop-in rules inference feature. It scans a repo end-to-end and emits a suggested depmap.config.ts based on what it finds (kinds, tags, policy allow-matrix, softening, ignores). You’ll get:
-	•	depmap infer → writes depmap.config.suggested.ts at the project root (safe default)
-	•	depmap infer --write → writes depmap.config.ts if it doesn’t exist
-	•	depmap infer --force → overwrites depmap.config.ts
-
-It uses the same parser stack as your graph generator, then learns patterns from actual imports.
-
-⸻
-
-src/infer-rules.mjs
-
 import path from "node:path";
 import fs from "node:fs";
 import fg from "fast-glob";
@@ -93,7 +82,7 @@ function detectFeatures(root, files) {
     hasFixtures: files.some((f) => /__fixtures__\//.test(f)),
     hasSchemas: files.some((f) => /\.schema\.(t|j)s$/.test(f)),
     hasPrisma: files.some((f) => /^prisma\/.+/.test(f)),
-    hasServerLib: files.some((f) => /(^|\/)(server|server\-lib|lib\/(database|prisma))\.(t|j)s$/.test(f)),
+    hasServerLib: files.some((f) => /(^|\/(server|server\-lib|lib\/(database|prisma)))\.(t|j)s$/.test(f)),
     hasTypes: files.some((f) => /^lib\/(types|component-types)\.ts$/.test(f)),
     hasTokens: files.some((f) => /^lib\/design-tokens\.ts$/.test(f))
   };
@@ -269,111 +258,3 @@ export async function inferRules({ root, rootsGuess }) {
 
   return { text: ts, stats: { files: files.length, nodes: nodes.length, edges: edges.length }, roots, features };
 }
-
-
-⸻
-
-Update bin/depmap.mjs (add infer subcommand)
-
-#!/usr/bin/env node
-import { fileURLToPath } from "url";
-import path from "node:path";
-import fs from "node:fs";
-import minimist from "minimist";
-import open from "open";
-import { generateGraph } from "../src/generate-graph.mjs";
-import { serve } from "../src/server.mjs";
-import { loadConfig } from "../src/load-config.mjs";
-import { inferRules } from "../src/infer-rules.mjs";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-async function main() {
-  const argv = minimist(process.argv.slice(2), {
-    string: ["root", "port"],
-    boolean: ["open", "graphOnly", "write", "force"],
-    alias: { r: "root", p: "port", o: "open" },
-    default: { root: process.cwd(), port: "5656", open: true, graphOnly: false, write: false, force: false }
-  });
-
-  const cmd = argv._[0]; // optional subcommand: infer
-  const projectRoot = path.resolve(argv.root);
-
-  if (cmd === "infer") {
-    await runInfer({ projectRoot, write: argv.write, force: argv.force });
-    return;
-  }
-
-  // default command: scan + serve
-  const cfgPath = ["depmap.config.ts", "depmap.config.mjs", "depmap.config.js"]
-    .map((p) => path.join(projectRoot, p))
-    .find((p) => fs.existsSync(p));
-
-  if (!cfgPath) {
-    console.error("[depmap] Missing depmap.config.ts at project root.");
-    console.error("Run `depmap infer` to generate a suggested config.");
-    process.exit(1);
-  }
-
-  const config = await loadConfig(cfgPath);
-  console.log(`[depmap] using config: ${path.relative(projectRoot, cfgPath)}`);
-
-  console.log(`[depmap] scanning ${projectRoot}`);
-  const graph = await generateGraph({ root: projectRoot, config });
-
-  const outPath = path.join(projectRoot, "public", "graph.json");
-  fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, JSON.stringify(graph, null, 2));
-  console.log(`[depmap] wrote ${path.relative(projectRoot, outPath)} (${graph.nodes.length} nodes, ${graph.edges.length} edges)`);
-
-  if (argv.graphOnly) return;
-
-  const viewerRoot = path.join(__dirname, "../viewer");
-  const { url } = await serve({ projectRoot, viewerRoot, port: Number(argv.port) });
-
-  console.log(`[depmap] viewer on ${url}`);
-  if (argv.open) await open(url);
-}
-
-async function runInfer({ projectRoot, write, force }) {
-  console.log(`[depmap] inferring rules from ${projectRoot}`);
-  const { text, stats, roots, features } = await inferRules({ root: projectRoot });
-  const targetSuggested = path.join(projectRoot, "depmap.config.suggested.ts");
-  const targetConfig = path.join(projectRoot, "depmap.config.ts");
-
-  const banner =
-    `// Files: ${stats.files}, Nodes: ${stats.nodes}, Edges: ${stats.edges}\n` +
-    `// Roots: ${roots.join(", ")}\n` +
-    `// Detected: ${Object.entries(features).filter(([,v])=>v).map(([k])=>k).join(", ") || "none"}\n\n`;
-
-  if (write) {
-    if (fs.existsSync(targetConfig) && !force) {
-      console.error(`[depmap] ${path.basename(targetConfig)} already exists. Use --force to overwrite, or omit --write to create ${path.basename(targetSuggested)} instead.`);
-      process.exit(1);
-    }
-    fs.writeFileSync(targetConfig, banner + text);
-    console.log(`[depmap] wrote ${path.relative(projectRoot, targetConfig)}`);
-  } else {
-    fs.writeFileSync(targetSuggested, banner + text);
-    console.log(`[depmap] wrote ${path.relative(projectRoot, targetSuggested)}`);
-  }
-
-  console.log("\nReview the suggested config, adjust as needed, then run:");
-  console.log("  npx depmap");
-}
-
-main().catch((err) => {
-  console.error("[depmap] error:", err);
-  process.exit(1);
-});
-
-
-⸻
-
-How it infers
-	•	Roots: scans top-level folders for code; prefers app, components, lib, prisma, stories, scripts, src.
-	•	Kinds & tags: detects Next.js page/layout/route, components/Layouts, components/Blocks, components/UI, prisma, server libs, stories, fixtures, schemas, barrels.
-	•	Policy allow-matrix: measures actual edges by kind; for each source kind, allows destinations that contribute a meaningful share of edges (≥ 5% or ≥ 3 edges), then always allows types and tokens.
-	•	Softening & ignores: converts policy to policy:info when the source is a barrel; ignores policy for stories, fixtures, dev-only if those exist.
-
-This gives you a solid starter depmap.config.ts derived from the project’s true shape. After writing it, run npx depmap to generate the graph and open the viewer.

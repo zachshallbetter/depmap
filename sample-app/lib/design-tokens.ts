@@ -1,0 +1,1 @@
+export const TOKENS = { fg: "#111827" } as const;
