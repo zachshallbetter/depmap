@@ -306,7 +306,7 @@ Status and limitations
 ⸻
 
 License
-	No license is declared yet. package.json says ISC, and the repository contains no LICENSE file.
+	MIT. See [LICENSE](LICENSE).
 
 ⸻
 
