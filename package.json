@@ -11,8 +11,8 @@
     "url": "git+https://github.com/zachshallbetter/depmap.git"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Zach Shallbetter",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/zachshallbetter/depmap/issues"
   },
