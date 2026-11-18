@@ -23,6 +23,9 @@ Contents
 	•	Performance tips
 	•	FAQ
 	•	Contributing and license
+	•	Repository map
+	•	Status and limitations
+	•	License
 
 ⸻
 
@@ -282,8 +285,28 @@ Run with --root at the workspace you want to visualize. You can create a config 
 
 Contributing and license
 
-Contributions are welcome. Open issues and PRs with clear reproduction steps.
-License: MIT.
+Contributions are welcome. Open issues and PRs with clear reproduction steps. See CONTRIBUTING.md, SUPPORT.md and SECURITY.md.
+For the license, see License below.
+
+⸻
+
+Repository map
+	•	Readme.md — this documentation
+	•	Setup.md, Additions.md, Inferance.md — design drafts for the package, the viewer additions and the rules-inference feature
+	•	package.json — placeholder manifest
+	•	CONTRIBUTING.md, SUPPORT.md, SECURITY.md, CODE_OF_CONDUCT.md, CHANGELOG.md — project policies
+
+⸻
+
+Status and limitations
+	•	This repository currently contains the documents above and no CLI or viewer source (there is no bin/depmap.mjs); the commands in this README describe the intended tool and cannot be run from this checkout.
+	•	There are no tests: the test script in package.json is the npm placeholder.
+	•	The repository has a v0.3.0 git tag. package.json says 1.0.0 and the Setup.md draft says 0.2.0.
+
+⸻
+
+License
+	No license is declared yet. package.json says ISC, and the repository contains no LICENSE file.
 
 ⸻
 
